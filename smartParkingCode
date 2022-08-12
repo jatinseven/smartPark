@@ -5,7 +5,7 @@ import time
 import os,sys
 from urllib.parse import urlparse
 import paho.mqtt.client as paho
-GPIO.setmode(GPIO.BOARD)
+GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 
 '''
@@ -23,16 +23,24 @@ LCD_D4 = 12
 LCD_D5 = 13
 LCD_D6 = 15
 LCD_D7 = 16
-slot1_ultraSensor = 29
-slot2_ultraSensor = 31
+slot1_trig = 23
+slot1_echo = 24
+slot2_trig = 20
+slot2_echo = 21
+LED1_Red = 5
+LED1_Green = 6
 GPIO.setup(LCD_E, GPIO.OUT)  # E
 GPIO.setup(LCD_RS, GPIO.OUT) # RS
 GPIO.setup(LCD_D4, GPIO.OUT) # DB4
 GPIO.setup(LCD_D5, GPIO.OUT) # DB5
 GPIO.setup(LCD_D6, GPIO.OUT) # DB6
 GPIO.setup(LCD_D7, GPIO.OUT) # DB7
-GPIO.setup(slot1_ultraSensor, GPIO.IN) 
-GPIO.setup(slot2_ultraSensor, GPIO.IN)
+GPIO.setup(slot1_trig, GPIO.OUT)
+GPIO.setup(slot1_echo, GPIO.IN)
+GPIO.setup(slot2_trig, GPIO.OUT)
+GPIO.setup(slot2_echo, GPIO.IN)
+GPIO.setup(LED1_Red, GPIO.OUT)
+GPIO.setup(LED1_Green, GPIO.OUT)
 
 # Define some device constants
 LCD_WIDTH = 16    # Maximum characters per line
@@ -153,23 +161,51 @@ delay = 5
 while 1:
   # Print out results
   rc = mqttc.loop()
-  slot1_status = GPIO.input(slot1_ultraSensor)
+  GPIO.output(slot1_trig, False)
   time.sleep(0.2)
-  slot2_status = GPIO.input(slot2_ultraSensor)
+  GPIO.output(slot1_trig, True)
+  time.sleep(0.00001)
+  GPIO.output(slot1_trig, False)
+
   time.sleep(0.2)
-  if (slot1_status == False):
-   lcd_string("Slot1 Parked  ",LCD_LINE_1)
-   mqttc.publish("slot1","1")
-   time.sleep(0.2)
+  while GPIO.input(slot1_echo)==0:
+    pulse_start_slot1=time.time()
+  while GPIO.input(slot1_echo)==1:
+    pulse_end_slot1=time.time()
+  pulse_duration_slot1=pulse_end_slot1-pulse_start_slot1
+  distance_slot1=pulse_duration_slot1*17150
+  distance_slot1=round(distance_slot1,2)
+
+  GPIO.output(slot2_trig, False)
+  time.sleep(0.2)
+  GPIO.output(slot2_trig, True)
+  time.sleep(0.00001)
+  GPIO.output(slot2_trig, False)
+
+  time.sleep(0.2)
+  while GPIO.input(slot2_echo)==0:
+    pulse_start_slot2=time.time()
+  while GPIO.input(slot2_echo)==1:
+    pulse_end_slot2=time.time()
+  pulse_duration_slot2=pulse_end_slot2-pulse_start_slot2
+  distance_slot2=pulse_duration_slot2*17150
+  distance_slot2=round(distance_slot2,2)
+
+  if distance_slot1 <= 12:
+    lcd_string("Slot1 Parked  ",LCD_LINE_1)
+    mqttc.publish("slot1","1")
+    GPIO.output(LED1_Red, True)
+    time.sleep(0.2)
   else:
     lcd_string("Slot1 Free  ",LCD_LINE_1)
     mqttc.publish("slot1","0")
+    GPIO.output(LED1_Green, True)
     time.sleep(0.2)
     
-  if (slot2_status == False):
-   lcd_string("Slot2 Parked  ",LCD_LINE_2)
-   mqttc.publish("slot2","1")
-   time.sleep(0.2)
+  if distance_slot2 <= 12:
+    lcd_string("Slot2 Parked  ",LCD_LINE_2)
+    mqttc.publish("slot2","1")
+    time.sleep(0.2)
   else:
     lcd_string("Slot2 Free  ",LCD_LINE_2)
     mqttc.publish("slot2","0")
