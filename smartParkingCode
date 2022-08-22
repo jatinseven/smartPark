@@ -9,11 +9,6 @@ import paho.mqtt.client as paho
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 
-# Timing constants
-E_PULSE = 0.0005
-E_DELAY = 0.0005
-delay = 1
-
 lcdDisplay = I2C_LCD_driver.lcd()
 
 # Define GPIO mapping
@@ -25,6 +20,8 @@ LED1_Red = 5 #pin 29
 LED1_Green = 6 #pin 31
 LED2_Red = 17 #pin 11
 LED2_Green = 27 #pin 13
+
+#Define output and input pins
 GPIO.setup(slot1_trig, GPIO.OUT)
 GPIO.setup(slot1_echo, GPIO.IN)
 GPIO.setup(slot2_trig, GPIO.OUT)
@@ -45,29 +42,35 @@ mqttc = paho.Client()                        # object declaration
 mqttc.on_connect = on_connect
 mqttc.on_publish = on_publish
 
+#Connect MQTT emqx broker
 url_str = os.environ.get('CLOUDMQTT_URL', 'tcp://broker.emqx.io:1883') 
 url = urlparse(url_str)
 mqttc.connect(url.hostname, url.port)
 
+# Display initial message on LCD
 lcdDisplay.lcd_display_string("Smart Parking", 1)
 lcdDisplay.lcd_display_string("System", 2)
 
-
 delay = 5
 
+#Continuously checks the data on the sensor
 while 1:
   # Print out results
   rc = mqttc.loop()
+    
+  #Trigger pulse
   GPIO.output(slot1_trig, False)
   time.sleep(0.2)
   GPIO.output(slot1_trig, True)
   time.sleep(0.00001)
   GPIO.output(slot1_trig, False)
 
+  #Calculate the start and end time of echo pulse for slot 1
   while GPIO.input(slot1_echo)==0:
     pulse_start_slot1=time.time()
   while GPIO.input(slot1_echo)==1:
     pulse_end_slot1=time.time()
+  #Calculate the pulse duration and the distance for slot 1
   pulse_duration_slot1=pulse_end_slot1-pulse_start_slot1
   distance_slot1=pulse_duration_slot1*17150
   distance_slot1=round(distance_slot1,2)
@@ -78,14 +81,18 @@ while 1:
   time.sleep(0.00001)
   GPIO.output(slot2_trig, False)
 
+  #Calculate the start and end time of echo pulse for slot 2
   while GPIO.input(slot2_echo)==0:
     pulse_start_slot2=time.time()
   while GPIO.input(slot2_echo)==1:
     pulse_end_slot2=time.time()
+  
+  #Calculate the pulse duration and the distance for slot 1
   pulse_duration_slot2=pulse_end_slot2-pulse_start_slot2
   distance_slot2=pulse_duration_slot2*17150
   distance_slot2=round(distance_slot2,2)
 
+  #Publish data to MQTT, LCD and LED
   if distance_slot1 <= 12:
     lcdDisplay.lcd_display_string("Slot 1 Parked", 1)
     mqttc.publish("slot1","1")
@@ -101,13 +108,13 @@ while 1:
     
   if distance_slot2 <= 12:
     lcdDisplay.lcd_display_string("Slot 2 Parked  ", 2)
-    mqttc.publish("slot2","1")
+    mqttc.publish("slot2","3")
     GPIO.output(LED2_Green, False)
     GPIO.output(LED2_Red, True)
     time.sleep(0.2)
   else:
     lcdDisplay.lcd_display_string("Slot 2 Free  ", 2)
-    mqttc.publish("slot2","0")
+    mqttc.publish("slot2","2")
     GPIO.output(LED2_Red, False)
     GPIO.output(LED2_Green, True)
     time.sleep(0.2)
